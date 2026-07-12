@@ -10,7 +10,6 @@ The architecture features a robust dual-token JWT authentication strategy, custo
 
 The server adheres to a clean, modular Model-Controller-Route design pattern (MVC, omitting client views) and mounts all resource endpoints under the `/api/v1` namespace.
 
-```mermaid
 graph TD
     Client[HTTP Client] -->|Express Middleware Stack| CORS[CORS Check]
     CORS --> CookieParser[Cookie Parser]
