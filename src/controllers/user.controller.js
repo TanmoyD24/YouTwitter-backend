@@ -15,7 +15,7 @@ const generateAccessAndRefreshToken = async (userId) => {
         const refreshToken = user.generateRefreshToken()
 
         user.refreshToken = refreshToken
-        user.save({ validateBeforeSave: false })
+        await user.save({ validateBeforeSave: false })
         
         return { accessToken, refreshToken }
 
@@ -190,22 +190,22 @@ const logoutUser = asyncHandler(async (req, res) => {
 });
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incomingRefeshToken = req.cookie.refreshToken || req.body.refreshToken
+    const incomingRefreshToken = req.cookies?.refreshToken || req.body.refreshToken
 
-    if (!incomingRefeshToken) {
+    if (!incomingRefreshToken) {
         throw new ApiError(401, "unauthorized request")
     }
 
     try {
-        const decodedToken = jwt.verify(incomingRefeshToken, process.env.REFRESH_TOKEN_SECRET);
+        const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
     
         const user = await User.findById(decodedToken?._id)
     
         if (!user) {
-            throw new ApiError(401, "Invaslid refresh token");
+            throw new ApiError(401, "Invalid refresh token");
         }
     
-        if (incomingRefeshToken !== user?.refreshToken) {
+        if (incomingRefreshToken !== user?.refreshToken) {
             throw new ApiError(401, "Refresh token is expired or used")
         }
     
@@ -219,11 +219,11 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
         return res
             .status(200)
             .cookie("accessToken", accessToken, options)
-            .cookie("accessToken", newRefreshToken, options)
+            .cookie("refreshToken", newRefreshToken, options)
             .json(
                 new ApiResponse(
                     200,
-                    { accessToken, newRefreshToken },
+                    { accessToken, refreshToken: newRefreshToken },
                     "Access token refreshed"
                 )
             );
@@ -254,7 +254,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
     return res
         .status(200)
-        .json(ApiResponse(200, req.user, "Current user fetched successfully"))
+        .json(new ApiResponse(200, req.user, "Current user fetched successfully"))
 });
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
@@ -277,7 +277,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 
     return res
         .status(200)
-        .json(new ApiError(200, user, "Account details updated successfully"));
+        .json(new ApiResponse(200, user, "Account details updated successfully"));
 });
 
 const updateUserAvatar = asyncHandler(async (req, res) => {
@@ -355,31 +355,31 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         },
         {
             $lookup: {
-                from: "subcriptions",
+                from: "subscriptions",
                 localField: "_id",
                 foreignField: "channel",
-                as: "subcribers",
+                as: "subscribers",
             },
         },
         {
             $lookup: {
-                from: "subcriptions",
+                from: "subscriptions",
                 localField: "_id",
-                foreignField: "subcriber",
-                as: "subcribedTo",
+                foreignField: "subscriber",
+                as: "subscribedTo",
             },
         },
         {
             $addFields: {
-                subcribersCount: {
-                    $size: "$subcribers",
+                subscribersCount: {
+                    $size: "$subscribers",
                 },
-                channelSubcribedToCount: {
-                    $size: "$subcribedTo",
+                channelSubscribedToCount: {
+                    $size: "$subscribedTo",
                 },
-                isSubcribed: {
+                isSubscribed: {
                     $cond: {
-                        if: { $in: [req.user?._id, "$subcribers"] },
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
                         then: true,
                         else: false,
                     },
@@ -390,24 +390,24 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
             $project: {
                 fullName: 1,
                 username: 1,
-                subcribersCount: 1,
-                channelSubcribedToCount: 1,
+                subscribersCount: 1,
+                channelSubscribedToCount: 1,
                 avatar: 1,
-                isSubcribed: 1,
+                isSubscribed: 1,
                 coverImage: 1,
                 email: 1
             },
         },
     ]);
 
-    if (!channel?.lenght) {
-        throw new ApiError(404, " Channel does not exists")
+    if (!channel?.length) {
+        throw new ApiError(404, "Channel does not exist")
     }
 
     return res
         .status(200)
         .json(
-            new ApiResponse(200, "User channel feteched successfully")
+            new ApiResponse(200, channel[0], "User channel fetched successfully")
         )
 });
 
@@ -427,19 +427,10 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                 pipeline: [
                     {
                         $lookup: {
-                            form: "users",
+                            from: "users",
                             localField: "owner",
                             foreignField: "_id",
-                            as: "owner",
-                            pipeline: [
-                                {
-                                    $project: {
-                                        fullName: 1,
-                                        username: 1,
-                                        avatar: 1
-                                    }
-                                }
-                            ]
+                            as: "owner"
                         }
                     },
                     {
@@ -447,6 +438,24 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                             owner: {
                                 $first: "$owner"
                             }
+                        }
+                    },
+                    {
+                        $project: {
+                            videoFile: 1,
+                            thumbnail: 1,
+                            title: 1,
+                            description: 1,
+                            duration: 1,
+                            views: 1,
+                            isPublished: 1,
+                            owner: {
+                                fullName: 1,
+                                username: 1,
+                                avatar: 1
+                            },
+                            createdAt: 1,
+                            updatedAt: 1
                         }
                     }
                 ]
@@ -456,7 +465,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
 
     return res
         .status(200)
-        .json(new ApiResponse(200, user[0].watchHistory,
+        .json(new ApiResponse(200, user[0]?.watchHistory || [],
         "Watch history fetched successfully")
     );
 });
